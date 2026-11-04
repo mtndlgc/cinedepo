@@ -14,7 +14,7 @@ buildscript {
         classpath("com.android.tools.build:gradle:8.7.3")
         // Builds .cs3 files and plugins.json (tasks: make, makePluginsJson, deployWithAdb).
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10") // must read the metadata version of the cloudstream stubs
     }
 }
 
@@ -54,14 +54,14 @@ subprojects {
         }
 
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_1_8
-            targetCompatibility = JavaVersion.VERSION_1_8
+            sourceCompatibility = JavaVersion.VERSION_11
+            targetCompatibility = JavaVersion.VERSION_11
         }
     }
 
     tasks.withType<KotlinJvmCompile>().configureEach {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
+            jvmTarget.set(JvmTarget.JVM_11)
             freeCompilerArgs.addAll(
                 "-Xno-call-assertions",
                 "-Xno-param-assertions",
