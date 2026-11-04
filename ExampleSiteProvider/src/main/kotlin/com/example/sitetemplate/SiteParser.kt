@@ -107,8 +107,8 @@ class SiteParser(
         val plot = doc.textOf(Selectors.DETAIL_PLOT)
             ?: doc.selectFirst("meta[name=description]")?.attr("content").cleanText()
 
-        val trailer = doc.selectFirst(Selectors.DETAIL_TRAILER)?.let {
-            safeUrl(it.attr("href").ifBlank { it.attr("src") }, sameSiteOnly = false)
+        val trailer = doc.selectFirst(Selectors.DETAIL_TRAILER)?.let { el: Element ->
+            safeUrl(el.attr("href").ifBlank { el.attr("src") }, sameSiteOnly = false)
         }
 
         return ParsedDetail(
