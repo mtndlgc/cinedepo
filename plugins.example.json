@@ -6,12 +6,18 @@
     "apiVersion": 1,
     "name": "ExampleSiteProvider",
     "internalName": "ExampleSiteProvider",
-    "authors": ["YOUR_NAME"],
+    "authors": [
+      "YOUR_NAME"
+    ],
     "description": "Generic HTML provider template. Point it at a site you are allowed to scrape.",
     "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
     "language": "en",
     "iconUrl": null,
-    "tvTypes": ["Movie", "TvSeries"],
-    "fileSize": 12345
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "fileSize": 34249,
+    "fileHash": "sha256-<cs3 dosyasının sha256 özeti>"
   }
 ]
