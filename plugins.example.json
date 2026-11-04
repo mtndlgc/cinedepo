@@ -9,7 +9,7 @@
     "authors": [
       "mtndlgc"
     ],
-    "description": "Generic HTML provider template. Point it at a site you are allowed to scrape.",
+    "description": "Genel amaçlı HTML sağlayıcı şablonu. Erişim izniniz olan bir siteye uyarlayın.",
     "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
     "language": "en",
     "iconUrl": null,

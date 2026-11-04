@@ -2,8 +2,8 @@
 version = 2
 
 cloudstream {
-    // TODO: describe your provider.
-    description = "Generic HTML provider template. Point it at a site you are allowed to scrape."
+    // TODO: sağlayıcınızı tanımlayın.
+    description = "Genel amaçlı HTML sağlayıcı şablonu. Erişim izniniz olan bir siteye uyarlayın."
     authors = listOf("mtndlgc")
     language = "en"
 
