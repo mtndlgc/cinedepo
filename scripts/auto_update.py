@@ -278,7 +278,7 @@ def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: boo
     cfg = ConfigEditor(config_path)
     gradle = ConfigEditor(plugin / "build.gradle.kts")
 
-    own = {str(p.path.relative_to(ROOT)) for p in (cfg, gradle)}
+    own = {p.path.relative_to(ROOT).as_posix() for p in (cfg, gradle)}
     if not dry_run and not no_commit and not allow_dirty:
         # Uncommitted edits to this plugin's own two files (e.g. an earlier "save") are fine;
         # anything else would end up mixed into the commit, so stop.
@@ -353,7 +353,7 @@ def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: boo
     if no_commit:
         return result
 
-    changed = sorted({str(p.path.relative_to(ROOT)) for p in (cfg, gradle) if p.changed} | set(pending))
+    changed = sorted({p.path.relative_to(ROOT).as_posix() for p in (cfg, gradle) if p.changed} | set(pending))
     git("add", "--", *changed)
     target = s.get("url") or "ayarlar"
     git("commit", "-m", f"Auto-update {plugin.name}: {target}")
