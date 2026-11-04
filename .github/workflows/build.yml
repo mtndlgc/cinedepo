@@ -1,0 +1,107 @@
+name: Build Cloudstream plugins
+
+# Builds every plugin module in this repository into a .cs3 file, generates the
+# plugin index (plugins.json) and publishes both, plus repo.json, to the `builds`
+# branch. Add this URL to the Cloudstream app:
+#   https://raw.githubusercontent.com/<owner>/<repo>/builds/repo.json
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: cloudstream-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # needed to push to the builds branch
+
+env:
+  PLUGIN_ROOT: "."
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (selectors / parser)
+        working-directory: src
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Build plugins (.cs3) and plugins.json
+        working-directory: src
+        run: ./gradlew make makePluginsJson --stacktrace
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          root="src"
+          find "$root" -path '*/build/*' -name '*.cs3' -exec cp {} out/ \;
+          cp "$root/build/plugins.json" out/plugins.json
+          # repo.json from source, with the placeholder pointed at this repository.
+          sed "s#YOUR_USER/YOUR_REPO#${GITHUB_REPOSITORY}#g" "$root/repo.json" > out/repo.json
+          ls -la out
+          test -n "$(ls out/*.cs3 2>/dev/null)" || { echo "No .cs3 produced"; exit 1; }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudstream-plugins
+          path: out/
+
+      - name: Publish to builds branch
+        if: github.event_name != 'pull_request'
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          remote="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" builds >/dev/null 2>&1; then
+            git clone --depth 1 --branch builds "$remote" builds
+          else
+            # First run: create an orphan branch that only holds build outputs.
+            mkdir builds && cd builds
+            git init -b builds
+            git remote add origin "$remote"
+            cd ..
+          fi
+          cd builds
+          find . -maxdepth 1 \( -name '*.cs3' -o -name '*.json' \) -delete
+          cp ../out/* .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes in build outputs."
+            exit 0
+          fi
+          # Keep a single commit so the branch does not grow with every binary.
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git commit --amend -m "Build $GITHUB_SHA"
+          else
+            git commit -m "Build $GITHUB_SHA"
+          fi
+          git push --force origin builds

@@ -1,0 +1,8 @@
+{
+  "name": "CineDepo",
+  "description": "Template repository for generic Cloudstream providers. Replace this text.",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/mtndlgc/cinedepo/builds/plugins.json"
+  ]
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html><body>
+<div class="items">
+  <article class="item">
+    <a href="/movie/first-movie" title="First Movie"><img data-src="/img/first.jpg" src="data:image/gif;base64,R0lGOD"></a>
+    <h3 class="title">  First
+      Movie </h3>
+  </article>
+  <article class="item">
+    <a href="https://example-site.com/series/some-show"><img src="//example-site.com/img/show.jpg"></a>
+    <h3 class="title">Some Show</h3>
+    <span class="badge-series">TV</span>
+  </article>
+  <!-- no title anywhere: dropped -->
+  <article class="item"><a href="/movie/untitled"></a></article>
+  <!-- off-site link: dropped -->
+  <article class="item"><a href="https://evil.example.net/x"></a><h3 class="title">Ad</h3></article>
+  <!-- javascript: link: dropped -->
+  <article class="item"><a href="javascript:alert(1)"></a><h3 class="title">Bad</h3></article>
+</div>
+<a class="next" href="/movies/page/2">Next</a>
+</body></html>
