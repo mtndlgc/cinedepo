@@ -1,11 +1,11 @@
 // Bump this on every release: the app updates a plugin only when the version grows.
-version = 2
+version = 3
 
 cloudstream {
     // TODO: sağlayıcınızı tanımlayın.
     description = "Genel amaçlı HTML sağlayıcı şablonu. Erişim izniniz olan bir siteye uyarlayın."
     authors = listOf("mtndlgc")
-    language = "en"
+    language = "tr"
 
     /**
      * 0: Down

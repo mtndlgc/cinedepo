@@ -21,7 +21,7 @@ object SiteConfig {
     const val NAME = "Example Site"
 
     // TODO: ISO 639-1 language code of the content.
-    const val LANG = "en"
+    const val LANG = "tr"
 
     /**
      * Homepage rows: path (relative to [MAIN_URL]) to row title.

@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/mtndlgc/cinedepo/builds/ExampleSiteProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 3,
     "apiVersion": 1,
     "name": "ExampleSiteProvider",
     "internalName": "ExampleSiteProvider",
@@ -11,7 +11,7 @@
     ],
     "description": "Genel amaçlı HTML sağlayıcı şablonu. Erişim izniniz olan bir siteye uyarlayın.",
     "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
-    "language": "en",
+    "language": "tr",
     "iconUrl": null,
     "tvTypes": [
       "Movie",
