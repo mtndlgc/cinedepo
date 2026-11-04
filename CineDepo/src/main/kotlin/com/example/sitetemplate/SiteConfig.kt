@@ -18,7 +18,7 @@ object SiteConfig {
     const val MAIN_URL = "https://example-site.com"
 
     // TODO: name shown in the app.
-    const val NAME = "Example Site"
+    const val NAME = "CineDepo"
 
     // TODO: ISO 639-1 language code of the content.
     const val LANG = "tr"

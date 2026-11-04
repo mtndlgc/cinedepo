@@ -18,7 +18,7 @@ cinedepo/
 ├── repo.json                    # Uygulamaya eklenen depo bildirimi
 ├── plugins.example.json         # makePluginsJson çıktısının biçimi (örnek)
 ├── .github/workflows/build.yml  # .cs3 + plugins.json üretir, `builds` dalına yayınlar
-└── ExampleSiteProvider/
+└── CineDepo/                    # eklenti modülü; dizin adı = eklenti adı
     ├── build.gradle.kts         # sürüm + eklenti bildirimi (cloudstream { ... })
     └── src/
         ├── main/
@@ -58,12 +58,12 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
    kaydedin, `SiteParserTest` beklentilerini güncelleyin.
 3. Oynatıcı başka bir ana makinedeyse ve Cloudstream onu tanımıyorsa
    `ExampleEmbedExtractor`'ı uyarlayın (`mainUrl` = oynatıcının adresi).
-4. `ExampleSiteProvider/build.gradle.kts` içinde `description`, `authors`, `language`,
+4. `CineDepo/build.gradle.kts` içinde `description`, `authors`, `language`,
    `tvTypes`, `iconUrl` alanlarını düzenleyin. Her yayında `version` değerini artırın.
 5. Kök `build.gradle.kts` içindeki `setRepo(...)` yedeğini ve `repo.json` içindeki
    depo adresini kendi deponuza göre güncelleyin (şu an `mtndlgc/cinedepo`).
 
-Yeni eklenti eklemek için `ExampleSiteProvider` dizinini kopyalayıp adını ve paketini
+Yeni eklenti eklemek için `CineDepo` dizinini kopyalayıp adını ve paketini
 değiştirmeniz yeterli; `settings.gradle.kts` onu kendiliğinden ekler.
 
 ## Sürümler
@@ -99,8 +99,8 @@ JitPack erişimi.
 ```bash
 git clone https://github.com/mtndlgc/cinedepo && cd cinedepo
 ./gradlew testDebugUnitTest                   # ayrıştırıcı testleri
-./gradlew make makePluginsJson                # ExampleSiteProvider/build/ExampleSiteProvider.cs3 + build/plugins.json
-./gradlew ExampleSiteProvider:deployWithAdb   # USB ile bağlı cihaza (geliştirici modu) yükler
+./gradlew make makePluginsJson                # CineDepo/build/CineDepo.cs3 + build/plugins.json
+./gradlew CineDepo:deployWithAdb              # USB ile bağlı cihaza (geliştirici modu) yükler
 ```
 
 Not: Cloudstream eklenti dosyalarının uzantısı `.cs3`'tür.
