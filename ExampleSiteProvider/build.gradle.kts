@@ -1,10 +1,10 @@
 // Bump this on every release: the app updates a plugin only when the version grows.
-version = 1
+version = 2
 
 cloudstream {
     // TODO: describe your provider.
     description = "Generic HTML provider template. Point it at a site you are allowed to scrape."
-    authors = listOf("YOUR_NAME")
+    authors = listOf("mtndlgc")
     language = "en"
 
     /**

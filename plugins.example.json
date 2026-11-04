@@ -7,7 +7,7 @@
     "name": "ExampleSiteProvider",
     "internalName": "ExampleSiteProvider",
     "authors": [
-      "YOUR_NAME"
+      "mtndlgc"
     ],
     "description": "Generic HTML provider template. Point it at a site you are allowed to scrape.",
     "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
