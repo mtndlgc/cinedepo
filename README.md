@@ -74,10 +74,23 @@ değiştirmeniz yeterli; `settings.gradle.kts` onu kendiliğinden ekler.
 
 Site adresini ve seçicileri komut satırı yerine bir pencereden düzenlemek için:
 
+macOS / Linux:
+
 ```bash
 git clone https://github.com/mtndlgc/cinedepo && cd cinedepo
 python3 scripts/site_editor.py
 ```
+
+Windows (PowerShell; eski PowerShell `&&` tanımadığı için komutlar ayrı satırda):
+
+```powershell
+git clone https://github.com/mtndlgc/cinedepo
+cd cinedepo
+py scripts\site_editor.py
+```
+
+`py` bulunamazsa `python scripts\site_editor.py` deneyin. Python yoksa python.org'dan kurun ve
+kurulumda "Add python.exe to PATH" kutusunu işaretleyin. Git yoksa git-scm.com'dan kurun.
 
 Tarayıcıda `http://127.0.0.1:8765` açılır (açılmazsa adresi kendin aç; kapatmak için terminalde
 `Ctrl+C`). Gereken tek şey Python 3; Windows, macOS ve Linux'ta aynı çalışır, ek paket gerekmez.
