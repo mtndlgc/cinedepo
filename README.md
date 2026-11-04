@@ -18,8 +18,13 @@ cinedepo/
 ├── repo.json                    # Uygulamaya eklenen depo bildirimi
 ├── plugins.example.json         # makePluginsJson çıktısının biçimi (örnek)
 ├── site.example.json            # auto_update.py için örnek site ayarı
+├── sites.example.json           # çok siteli ayar: her site ayrı eklenti
+├── scripts/find_site.py         # sitenin çalışan adresini / aday listesini denetler
+├── scripts/discover_site.py     # site adresinden bölüm/arama/sayfalama bulur
+├── scripts/new_plugin.py        # şablondan yeni eklenti modülü üretir
 ├── scripts/auto_update.py       # siteye uyarla + sürüm artır + gönder (tek komut)
 ├── scripts/site_editor.py       # aynı işin tarayıcıda açılan masaüstü arayüzü
+├── scripts/tests/               # Python testleri (ağ gerekmez)
 ├── .github/workflows/build.yml  # .cs3 + plugins.json üretir, `builds` dalına yayınlar
 ├── InternetArchive/             # archive.org'daki kamu malı filmler (JSON API, çalışan örnek)
 └── CineDepo/                    # eklenti modülü; dizin adı = eklenti adı
@@ -57,8 +62,9 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
 ## Yeni bir siteye uyarlama
 
 1. `SiteConfig.kt` içindeki `TODO` alanlarını doldurun (elle ya da `scripts/auto_update.py` ile,
-   aşağıya bakın). Seçicileri tarayıcıda
-   Geliştirici Araçları > Öğeler ile bulun (`document.querySelectorAll("...")` ile konsolda deneyin).
+   aşağıya bakın; site adresi, bölüm adresleri ve arama yolunu `scripts/discover_site.py` bulur).
+   Seçicileri tarayıcıda Geliştirici Araçları > Öğeler ile bulun
+   (`document.querySelectorAll("...")` ile konsolda deneyin).
 2. Hedef sitenin bir liste, film ve dizi sayfasını `src/test/resources/fixtures/` altına
    kaydedin, `SiteParserTest` beklentilerini güncelleyin.
 3. Oynatıcı başka bir ana makinedeyse ve Cloudstream onu tanımıyorsa
@@ -187,6 +193,127 @@ sürümüne göre değişebilir.)
 
 Beklemeden denemek için: `./gradlew make` ile yerelde `.cs3` üretin, ya da cihaz USB'ye bağlıysa
 `./gradlew CineDepo:deployWithAdb` ile doğrudan yükleyin.
+
+## Sitenin çalışan adresini bulma (`scripts/find_site.py`)
+
+Siteler alan adı değiştirdiğinde `SiteConfig.kt` içindeki adres ölür. Script elindeki adresten
+başlar, sitenin kendi sayfasında gösterdiği adresleri (mirror bağlantıları, aynı adın başka
+uzantıları) toplar, her adaya istek atar ve sayfayı özgün sayfayla puanlar: aynı bağlantı yapısı,
+aynı başlık, aynı arama kutusu.
+
+```bash
+python3 scripts/find_site.py https://ornek.com                     # sıralı adres listesi
+python3 scripts/find_site.py https://ornek.com --apply --plugin CineDepo --dry-run
+python3 scripts/discover_site.py https://ornek.com --resolve --plugin CineDepo --apply
+python3 scripts/find_site.py --candidates domains.txt --out domains.json
+python3 scripts/find_site.py --candidates domains.txt --plan sites.json
+```
+
+- Puan eşiği `--min-score` (varsayılan 0.35); altındaki adres "başka site" sayılır.
+- Ölü adresler hata değil, listede "yanıt yok" satırı olarak görünür. Aynı adı taşıyan adresler
+  (mirror'lar) tek satırda toplanır, `+N mirror` olarak yazılır.
+- `--apply` en iyi adresi `MAIN_URL` ve `iconUrl`'e yazar, sürümü artırır; commit/push davranışı
+  `auto_update.py` ile aynıdır (`--dry-run`, `--no-commit`, `--no-push`).
+- `--resolve` aynı işi `discover_site.py`'nin başında yapar; `sites.json` içindeki bir kayda
+  `"update_domain": true` eklenirse `auto_update.py` her çalışmada önce çalışan adresi arar ve
+  adres değişmişse yeni adresle yazar.
+- `--plan` her erişilebilir site için bölümleri ve arama yolunu da bulur ve `sites.json` üretir;
+  bölüm de arama da bulunamayan sayfalar (park edilmiş alan adları) plana alınmaz.
+
+### Adres listeleri ve katalog (`--import`, `--check`, `--plan`, `--prune`)
+
+`find_site.py` bir de kayıt defteri gibi çalışır: adres listelerini okur, her siteyi kaynağı ve
+denetim tarihiyle `sites.json`'a yazar, sonra bölümlerini bulup plana çevirir.
+
+```bash
+python3 scripts/find_site.py --import domains.txt --catalog sites.json   # listeyi kaydet (ağ yok)
+python3 scripts/find_site.py --import bookmarks.html --filter "film|dizi" # süzerek al
+python3 scripts/find_site.py --check                                     # adresleri dene, durumu yaz
+python3 scripts/find_site.py --plan                                      # bölüm/arama bul, plana çevir
+python3 scripts/find_site.py --prune                                     # ölü kayıtları sil
+python3 scripts/auto_update.py --config sites.json --dry-run             # planı uygula
+```
+
+Okunan biçimler: düz metin (satır başına bir adres, `#` yorum), `.csv`/`.tsv` (`URL,Başlık`
+başlığı varsa kullanılır), Markdown (`[ad](adres)`), tarayıcı yer imleri (`.html`). Aynı site
+farklı yazımlarla (`http/https`, `www.`, yol) gelirse tek kayda birleşir, kaynaklar listelenir.
+
+Kayıt alanları:
+
+| Alan | Anlamı |
+|---|---|
+| `status` | `candidate` (listeden geldi) → `ok` / `unusable` / `unreachable` (denetim sonrası) → `planned` (bölümleri bulundu) |
+| `sources` | `domains.txt:12`, `bookmarks.html:34` gibi kaynak izi |
+| `added` / `checked` / `planned` | ilk görülme, son denetim, plana çevrilme tarihi |
+| `score` | sayfanın hâlâ o siteye benzediğine dair puan |
+| `previous_urls` | adres taşındıysa eski adresler |
+| `plugin`, `create` | hangi modüle gideceği ve modül yoksa oluşturulup oluşturulmayacağı |
+
+- `--check` önce adresi doğrudan dener; yanıt gelmezse taşınmış olabileceğini varsayıp mirror
+  adaylarını tarar ve bulursa adresi günceller (eskisini `previous_urls`'a yazar).
+- `--plan` yalnız `ok` durumundaki kayıtları işler; bölüm de arama da bulunamazsa kayıt
+  `unusable` olur ve `auto_update.py` onu atlar.
+- Arama motorları, sosyal medya ve mağaza alan adları listeye alınmaz (`--allow-denied` ile geçilir).
+
+## Site adreslerini otomatik bulma (`scripts/discover_site.py`)
+
+Site adresini, ana sayfa satırlarını ve arama yolunu elle yazmak yerine tek komutla bulur.
+Yalnızca Python 3 standart kitaplığı gerekir.
+
+```bash
+python3 scripts/discover_site.py https://ornek.com                       # JSON olarak ekrana
+python3 scripts/discover_site.py https://ornek.com --out site.json       # dosyaya
+python3 scripts/discover_site.py https://ornek.com --apply --plugin CineDepo --dry-run
+```
+
+1. Ana sayfayı indirir ve menüdeki liste sayfası gibi görünen bağlantıları toplar (menü içinde
+   olmak, yolda `film`/`dizi`/`kategori` gibi kelimeler bulunmak puan kazandırır; giriş, iletişim,
+   arama, detay sayfaları elenir).
+2. Her adayı bir kez indirip gerçekten liste olduğunu denetler: aynı yolun altında en az 5 bağlantı.
+3. Sayfalamayı bulur: `/filmler/page/2` → `/filmler/page/%d`, `?sayfa=2` → `?sayfa=%d`.
+4. Arama formunu bulur: `/arama?q=%s` (form `POST` ise bulunamaz, not olarak söyler).
+5. `--apply` ile sonucu doğrudan `SiteConfig.kt`'ye yazar; `--dry-run` yalnız farkı gösterir.
+
+`--no-verify` ek istekleri atlar, `--limit N` bölüm sayısını sınırlar. Bulunamayan alan
+(`search_path` gibi) hiç yazılmaz, nedeni ekrana not olarak basılır. **CSS seçicilerini bulmaz**:
+onları hâlâ tarayıcıda bulmanız ya da `--check` ile denemeniz gerekir. JavaScript ile oluşan
+sayfalarda HTML'de bağlantı olmadığı için sonuç vermez.
+
+## Birden fazla site, birden fazla eklenti
+
+Her site kendi eklenti modülünde durur ve her modül ayrı bir `.cs3` ile `plugins.json` kaydı
+üretir. `settings.gradle.kts`, `build.gradle.kts` içeren her dizini kendiliğinden ekler.
+
+```bash
+python3 scripts/new_plugin.py --name FilmX --url https://filmx.example --display-name "Film X"
+python3 scripts/discover_site.py https://filmx.example --plugin FilmX --out sites.json --append
+python3 scripts/auto_update.py --config sites.json --dry-run   # tüm sitelerin farkı
+python3 scripts/auto_update.py --config sites.json             # hepsini tek commit'te gönder
+```
+
+Adresleri tek tek bulmak istemiyorsanız bir aday listesinden plan üretin:
+
+```bash
+python3 scripts/find_site.py --candidates domains.txt --plan sites.json
+```
+
+`domains.txt` satır başına bir adres tutar (`#` ile yorum). Erişilebilen ve bölüm/arama bulunan
+her site plana girer; `auto_update.py` onlar için eksik modülleri kendisi oluşturur.
+
+`sites.json` (bkz. `sites.example.json`) bir `sites` listesi tutar; her kayıt kendi eklentisine
+yazılır ve bütün değişiklikler tek commit'te gönderilir.
+
+- `"plugin": "..."` kaydın hangi modüle gideceğini söyler.
+- `"create": true` modül yoksa şablondan oluşturur; `"template"` başka bir modülü, `"package"`
+  Kotlin paketini seçer. Yeni modül `version = 1` ile başlar, `settings.gradle.kts` onu otomatik
+  ekler ve CI ilk derlemede `.cs3`'ünü üretir.
+- `--only FilmX` yalnız o kaydı işler.
+- `"sites"` listesi varken `--url`, `--selector` gibi seçenekler kullanılamaz; değerler dosyada olur.
+- `new_plugin.py` yeni modülde Kotlin paketini de değiştirir (`com.example.filmx`), sınıf adları
+  aynı kalsa da paketler ayrı olduğu için iki eklenti çakışmaz.
+
+`scripts/tests/` altındaki testler ağ ve ek paket gerektirmez:
+`python3 -m unittest discover -s scripts/tests -v`.
 
 ## Sürümler
 

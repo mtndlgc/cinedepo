@@ -1,0 +1,11 @@
+# Katalog için örnek adres listesi.
+# Her satır bir adres: alan adı, http(s) URL'si ya da başlıkla birlikte yazılabilir.
+# '#' ile başlayan satırlar ve satır sonundaki " # yorum" yok sayılır.
+
+https://ornek-film.example
+ornek-dizi.example
+https://ornek-belgesel.example  # belgesel sitesi
+
+# CSV de olur: "URL,Başlık" başlıklı dosya (siteler.csv)
+# Markdown da olur: - [Örnek](https://ornek-film.example)
+# Tarayıcı yer imleri de olur: bookmarks.html

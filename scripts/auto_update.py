@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Retarget the plugin at a site, bump its version and publish it in one command.
 
     python3 scripts/auto_update.py --config site.json            # see site.example.json
     python3 scripts/auto_update.py --url https://example.org \\
         --selector LIST_ITEM="div.film" --selector ITEM_TITLE="h2"
+    python3 scripts/auto_update.py --config sites.json --dry-run # many sites, see sites.example.json
     python3 scripts/auto_update.py --config site.json --dry-run  # show the diff only
 
 Steps:
@@ -17,6 +18,11 @@ Steps:
      `pip install beautifulsoup4`),
   4. commits only the files it changed and pushes; GitHub Actions then builds
      the .cs3 and publishes it to the `builds` branch.
+
+A config file may hold a `sites` list instead of a single site. Each entry is
+written to its own plugin (one .cs3 per site) and everything is committed in one
+commit. An entry with `"create": true` first copies the module from the template
+(`"template"` picks another one), so no manual setup is needed for a new plugin.
 
 Only standard library is required. Only use this for sites whose terms allow
 automated access.
@@ -34,6 +40,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Catalogue statuses that are not ready to be written into a plugin (see site_registry.py).
+PENDING_STATUSES = ("candidate", "unreachable", "unusable")
 
 
 # ----------------------------------------------------------------- helpers
@@ -83,7 +92,8 @@ def find_plugin(name: str | None) -> Path:
     modules = list_plugins()
     if name:
         if name not in modules:
-            die(f"eklenti bulunamadı: {name}. Mevcut: {', '.join(modules) or '-'}")
+            die(f"eklenti bulunamadı: {name}. Mevcut: {', '.join(modules) or '-'}"
+                " (oluşturmak için ayarda \"create\": true kullanın)")
         return ROOT / name
     if len(modules) != 1:
         die(f"birden fazla eklenti var, --plugin ile seçin: {', '.join(modules)}")
@@ -187,9 +197,15 @@ def load_settings(args: argparse.Namespace) -> dict:
     data: dict = {}
     if args.config:
         try:
-            data = json.loads(Path(args.config).read_text(encoding="utf-8"))
+            data = json.loads(Path(args.config).read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as e:
             die(f"{args.config} okunamadı: {e}")
+        if isinstance(data, dict) and "sites" in data:
+            if any(getattr(args, key, None) for key in
+                   ("url", "name", "lang", "search_path", "home", "extra_host", "selector")):
+                die("'sites' listesi içeren ayar dosyasıyla --url/--name/--selector gibi "
+                    "seçenekler birlikte kullanılamaz; değerleri dosyaya yazın")
+            return data
     for key in ("url", "name", "lang", "search_path", "plugin"):
         val = getattr(args, key)
         if val is not None:
@@ -267,27 +283,84 @@ def read_state(plugin_name: str | None = None) -> dict:
     }
 
 
-def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: bool = False,
-        no_push: bool = False, allow_dirty: bool = False, check: bool = False, log=print) -> dict:
-    """Applies settings `s` (same keys as site.json) to the plugin. Raises UpdateError."""
-    s = dict(s)
-    s["selectors"] = {to_const_name(k): v for k, v in (s.get("selectors") or {}).items()}
-    result = {"diff": "", "changed": False, "written": False, "committed": False, "pushed": False}
-    plugin = find_plugin(s.get("plugin"))
-    config_path = next(plugin.glob("src/main/kotlin/**/SiteConfig.kt"))
-    cfg = ConfigEditor(config_path)
-    gradle = ConfigEditor(plugin / "build.gradle.kts")
+def has_changes(path: str) -> bool:
+    """True when [path] is modified, staged or untracked (a new plugin directory)."""
+    result = subprocess.run(["git", "status", "--porcelain", "--", path], cwd=ROOT,
+                            text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        return False  # not a git repository: --no-commit still has to work
+    return bool(result.stdout.strip())
 
-    own = {p.path.relative_to(ROOT).as_posix() for p in (cfg, gradle)}
-    if not dry_run and not no_commit and not allow_dirty:
-        # Uncommitted edits to this plugin's own two files (e.g. an earlier "save") are fine;
-        # anything else would end up mixed into the commit, so stop.
-        others = [line[3:] for line in git("status", "--porcelain", capture=True).splitlines()
-                  if line[3:].strip('"') not in own]
-        if others:
-            die("çalışma alanında commit'lenmemiş başka değişiklik var: " + ", ".join(others)
-                + ". Önce commit'leyin ya da --allow-dirty verin.")
 
+def plugin_editors(plugin: Path) -> tuple[ConfigEditor, ConfigEditor]:
+    """The two files that hold every setting of one plugin."""
+    return (ConfigEditor(next(plugin.glob("src/main/kotlin/**/SiteConfig.kt"))),
+            ConfigEditor(plugin / "build.gradle.kts"))
+
+
+def ensure_plugin(name: str | None, settings: dict, log=print) -> Path:
+    """The plugin directory, created from the template module when the config asks for it."""
+    if not name:
+        die("yeni eklenti için 'plugin' adı gerekli")
+    if name in list_plugins():
+        return ROOT / name
+    import new_plugin  # imported late: only needed when a module has to be created
+
+    log(f"{name} eklentisi şablondan oluşturuluyor ({settings.get('template') or 'CineDepo'}).")
+    try:
+        new_plugin.create_plugin(
+            name,
+            template=settings.get("template"),
+            package=settings.get("package"),
+            url=settings.get("url"),
+            lang=settings.get("lang"),
+            display_name=settings.get("name"),
+            description=settings.get("description"),
+            log=log,
+        )
+    except new_plugin.PluginError as e:
+        die(str(e))
+    return ROOT / name
+
+
+def prepare(s: dict, *, dry_run: bool, log=print) -> tuple[Path, ConfigEditor, ConfigEditor, bool]:
+    """Resolves the plugin of one site: (directory, SiteConfig editor, build editor, created)."""
+    name = s.get("plugin")
+    if s.get("create") and (not name or name not in list_plugins()):
+        if dry_run:
+            import new_plugin
+            template = new_plugin.find_template(ROOT, s.get("template"))
+            cfg, gradle = plugin_editors(template)
+            log(f"(dry-run) {name}: eklenti oluşturulacak; fark {template.name} şablonu üzerinden gösteriliyor.")
+            return template, cfg, gradle, True
+        plugin = ensure_plugin(name, s, log=log)
+        cfg, gradle = plugin_editors(plugin)
+        return plugin, cfg, gradle, True
+    plugin = find_plugin(name)
+    cfg, gradle = plugin_editors(plugin)
+    return plugin, cfg, gradle, False
+
+
+def check_dirty(editors: list[ConfigEditor], *, allow_dirty: bool, dry_run: bool, no_commit: bool,
+                prefixes: list[str] = ()) -> None:
+    """Stops when unrelated files are modified: the commit would pick them up too."""
+    if allow_dirty or dry_run or no_commit:
+        return
+    own = {editor.path.relative_to(ROOT).as_posix() for editor in editors}
+    allowed = tuple(prefix.rstrip("/") + "/" for prefix in prefixes)
+    others = []
+    for line in git("status", "--porcelain", capture=True).splitlines():
+        path = line[3:].strip().strip('"')
+        if path in own or path.startswith(allowed):
+            continue
+        others.append(path)
+    if others:
+        die("çalışma alanında commit'lenmemiş başka değişiklik var: " + ", ".join(others)
+            + ". Önce commit'leyin ya da --allow-dirty verin.")
+
+
+def apply_values(s: dict, cfg: ConfigEditor, gradle: ConfigEditor) -> None:
+    """Writes url / name / language / search path / rows / hosts / selectors into the two files."""
     if "url" in s:
         s["url"] = normalize_url(s["url"])
         cfg.set_const("MAIN_URL", s["url"])
@@ -318,21 +391,45 @@ def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: boo
     for key, value in s["selectors"].items():
         cfg.set_const(key, value)
 
-    pending = [] if dry_run or no_commit else [
-        f for f in sorted(own)
-        if subprocess.run(["git", "diff", "--quiet", "HEAD", "--", f], cwd=ROOT).returncode != 0]
+
+def render(s: dict, cfg: ConfigEditor, gradle: ConfigEditor, *, dry_run: bool, no_bump: bool,
+           check: bool, created: bool = False, log=print) -> dict:
+    """Applies one site's settings to already-opened editors; writes them unless dry_run."""
+    plugin = cfg.path.relative_to(ROOT).parts[0]
+    s = dict(s)
+    s["selectors"] = {to_const_name(k): v for k, v in (s.get("selectors") or {}).items()}
+    result = {"plugin": plugin, "diff": "", "changed": False, "written": False,
+              "committed": False, "pushed": False}
+    if s.get("update_domain") and s.get("url"):
+        import find_site  # imported late: only needed with "update_domain": true
+        log(f"{s['url']}: çalışan adres aranıyor…")
+        try:
+            best = find_site.best_domain(s["url"], timeout=20, log=log)
+        except find_site.ResolveError as e:
+            die(str(e))
+        if best:
+            log(f"adres: {s['url']} -> {best}")
+            s["url"] = best
+        else:
+            log("uyarı: çalışan adres bulunamadı, ayardaki adres kullanılıyor")
+    apply_values(s, cfg, gradle)
+
+    own = [editor.path.relative_to(ROOT).as_posix() for editor in (cfg, gradle)]
+    pending = [] if dry_run else [path for path in own if has_changes(path)]
     if not cfg.changed and not gradle.changed:
         if not pending:
-            log("Değişecek bir şey yok (ayarlar zaten aynı).")
+            log(f"{plugin}: değişecek bir şey yok (ayarlar zaten aynı).")
             return result
-        log("Kaydedilmiş ama commit'lenmemiş değişiklikler gönderiliyor.")
+        log(f"{plugin}: kaydedilmiş ama commit'lenmemiş değişiklikler gönderiliyor.")
         no_bump = True  # already bumped when they were saved
 
+    if created:
+        no_bump = True  # a new module starts at version 1
     if not no_bump:
         old, new = bump_version(gradle)
-        log(f"Sürüm: {old} -> {new}")
+        log(f"{plugin} sürüm: {old} -> {new}")
 
-    result["diff"] = cfg.diff() + gradle.diff() or git("diff", "HEAD", "--", *pending, capture=True)
+    result["diff"] = (cfg.diff() + gradle.diff()) or git("diff", "HEAD", "--", *pending, capture=True)
     result["changed"] = True
     log(result["diff"])
 
@@ -349,30 +446,96 @@ def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: boo
     cfg.save()
     gradle.save()
     result["written"] = True
-    log("Dosyalar güncellendi.")
-    if no_commit:
-        return result
+    log(f"{plugin}: dosyalar güncellendi.")
+    return result
 
-    changed = sorted({p.path.relative_to(ROOT).as_posix() for p in (cfg, gradle) if p.changed} | set(pending))
-    git("add", "--", *changed)
-    target = s.get("url") or "ayarlar"
-    git("commit", "-m", f"Auto-update {plugin.name}: {target}")
-    result["committed"] = True
+
+def publish(files: list[str], message: str, *, no_push: bool, log=print) -> dict:
+    """Commits [files] and pushes the current branch."""
+    changed = sorted({path for path in files if has_changes(path)})
+    if not changed:
+        log("Gönderilecek değişiklik yok.")
+        return {"committed": False, "pushed": False}
+    git("add", "-A", "--", *changed)
+    git("commit", "-m", message)
     log("Commit atıldı.")
     if no_push:
-        return result
+        return {"committed": True, "pushed": False}
     branch = git("rev-parse", "--abbrev-ref", "HEAD", capture=True).strip()
     git("push", "origin", branch)
-    result["pushed"] = True
-    log(f"'{branch}' dalına gönderildi. GitHub Actions derlemeyi başlattı; "
-          f"bittiğinde uygulamada Eklentiler ekranında güncelleme görünür.")
+    log(f"'{branch}' dalına gönderildi. GitHub Actions derlemeyi başlattı; bittiğinde "
+        f"uygulamada Eklentiler ekranında güncelleme görünür.")
+    return {"committed": True, "pushed": True}
 
+
+def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: bool = False,
+        no_push: bool = False, allow_dirty: bool = False, check: bool = False, log=print) -> dict:
+    """Applies settings `s` (same keys as site.json) to one plugin. Raises UpdateError."""
+    plugin, cfg, gradle, created = prepare(s, dry_run=dry_run, log=log)
+    check_dirty([cfg, gradle], allow_dirty=allow_dirty, dry_run=dry_run,
+                no_commit=no_commit, prefixes=[plugin.name])
+    result = render(s, cfg, gradle, dry_run=dry_run, no_bump=no_bump, check=check,
+                    created=created, log=log)
+    if dry_run or no_commit:
+        return result
+
+    files = [editor.path.relative_to(ROOT).as_posix() for editor in (cfg, gradle)]
+    if created:
+        files.append(plugin.name)
+    target = s.get("url") or "ayarlar"
+    result.update(publish(files, f"Auto-update {plugin.name}: {target}", no_push=no_push, log=log))
     return result
+
+
+def run_all(sites: list[dict], *, only: str | None = None, dry_run: bool = False, no_bump: bool = False,
+            no_commit: bool = False, no_push: bool = False, allow_dirty: bool = False,
+            check: bool = False, log=print) -> dict:
+    """Applies one config entry per site and commits them together. Raises UpdateError."""
+    if not sites:
+        die("'sites' listesi boş")
+    if only:
+        sites = [s for s in sites if s.get("plugin") == only]
+        if not sites:
+            die(f"ayarda '{only}' için kayıt yok")
+
+    # find_site.py --import leaves entries as "candidate"; only checked and planned ones are used.
+    skipped = [s for s in sites if s.get("status") in PENDING_STATUSES]
+    for site in skipped:
+        log(f"{site.get('plugin') or site.get('url')}: durum '{site['status']}', atlandı "
+            f"(önce find_site.py --check --plan)")
+    sites = [s for s in sites if s.get("status") not in PENDING_STATUSES]
+    if not sites:
+        die("uygulanacak site yok: bütün kayıtlar henüz aday/ölü. "
+            "find_site.py --check --plan çalıştırın")
+
+    jobs = []
+    for s in sites:
+        plugin, cfg, gradle, created = prepare(s, dry_run=dry_run, log=log)
+        jobs.append({"site": s, "plugin": plugin, "cfg": cfg, "gradle": gradle, "created": created})
+
+    check_dirty([editor for job in jobs for editor in (job["cfg"], job["gradle"])],
+                allow_dirty=allow_dirty, dry_run=dry_run, no_commit=no_commit,
+                prefixes=[job["plugin"].name for job in jobs if job["created"]])
+
+    results = [render(job["site"], job["cfg"], job["gradle"], dry_run=dry_run,
+                      no_bump=no_bump, check=check, created=job["created"], log=log) for job in jobs]
+    summary = {"sites": results, "diff": "", "changed": any(r["changed"] for r in results),
+               "written": any(r["written"] for r in results),
+               "committed": False, "pushed": False}
+    if dry_run or no_commit:
+        return summary
+
+    files = [editor.path.relative_to(ROOT).as_posix() for job in jobs
+             for editor in (job["cfg"], job["gradle"])]
+    files += [job["plugin"].name for job in jobs if job["created"]]
+    names = ", ".join(sorted({r["plugin"] for r in results}))
+    summary.update(publish(files, f"Siteleri güncelle: {names}", no_push=no_push, log=log))
+    return summary
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Eklentiyi bir siteye uyarla, sürümü artır, gönder.")
-    ap.add_argument("--config", help="JSON ayar dosyası (bkz. site.example.json)")
+    ap.add_argument("--config", help="JSON ayar dosyası; 'sites' listesi içerebilir (bkz. sites.example.json)")
     ap.add_argument("--plugin", help="eklenti dizini (tek eklenti varsa gerekmez)")
     ap.add_argument("--url", help="hedef sitenin ana adresi")
     ap.add_argument("--name", help="uygulamada görünen sağlayıcı adı")
@@ -381,6 +544,7 @@ def main() -> None:
     ap.add_argument("--home", action="append", help="ana sayfa satırı 'yol|Başlık', %%d = sayfa (tekrarlanabilir)")
     ap.add_argument("--extra-host", action="append", dest="extra_host", help="izin verilen ek alan adı")
     ap.add_argument("--selector", action="append", help="LIST_ITEM=\"div.film\" gibi (tekrarlanabilir)")
+    ap.add_argument("--only", help="çok siteli ayarda yalnız bu eklentiyi güncelle")
     ap.add_argument("--no-bump", action="store_true", help="sürümü artırma")
     ap.add_argument("--check", action="store_true", help="seçicileri canlı sayfada dene (beautifulsoup4)")
     ap.add_argument("--dry-run", action="store_true", help="yalnızca farkı göster, dosya yazma")
@@ -389,9 +553,14 @@ def main() -> None:
     ap.add_argument("--allow-dirty", action="store_true", help="çalışma alanında başka değişiklik varken de devam et")
     args = ap.parse_args()
 
+    options = dict(dry_run=args.dry_run, no_bump=args.no_bump, no_commit=args.no_commit,
+                   no_push=args.no_push, allow_dirty=args.allow_dirty, check=args.check)
     try:
-        run(load_settings(args), dry_run=args.dry_run, no_bump=args.no_bump, no_commit=args.no_commit,
-            no_push=args.no_push, allow_dirty=args.allow_dirty, check=args.check)
+        settings = load_settings(args)
+        if "sites" in settings:
+            run_all(settings["sites"], only=args.only, **options)
+        else:
+            run(settings, **options)
     except UpdateError as e:
         print(f"HATA: {e}", file=sys.stderr)
         sys.exit(1)
@@ -399,3 +568,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

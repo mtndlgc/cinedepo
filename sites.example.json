@@ -1,0 +1,34 @@
+{
+  "sites": [
+    {
+      "plugin": "CineDepo",
+      "url": "https://ornek-film.example",
+      "name": "CineDepo",
+      "lang": "tr",
+      "search_path": "/arama?q=%s",
+      "home_sections": [
+        { "path": "/filmler/page/%d", "title": "Son Filmler" },
+        { "path": "/diziler/page/%d", "title": "Son Diziler" }
+      ],
+      "extra_hosts": [],
+      "selectors": {
+        "LIST_ITEM": "div.items article.item",
+        "ITEM_TITLE": "h3.title",
+        "ITEM_LINK": "a[href]",
+        "ITEM_POSTER": "img"
+      }
+    },
+    {
+      "plugin": "DiziKanal",
+      "create": true,
+      "template": "CineDepo",
+      "url": "https://ornek-dizi.example",
+      "name": "Dizi Kanal",
+      "lang": "tr",
+      "search_path": "/search?q=%s",
+      "home_sections": [
+        { "path": "/diziler/page/%d", "title": "Diziler" }
+      ]
+    }
+  ]
+}
