@@ -1,0 +1,43 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=example-site.com&sz=%size%",
+        "fileHash": "sha256-be7ed4e9ee2674dca2b93911b29b59bd898a45ddfd4d84e5d4c315a8eae94640",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
+        "fileSize": 38316,
+        "status": 1,
+        "language": "tr",
+        "authors": [
+            "mtndlgc"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 3,
+        "internalName": "CineDepo",
+        "description": "Genel ama\u00e7l\u0131 HTML sa\u011flay\u0131c\u0131 \u015fablonu. Eri\u015fim izniniz olan bir siteye uyarlay\u0131n.",
+        "url": "https://raw.githubusercontent.com/mtndlgc/cinedepo/builds/CineDepo.cs3",
+        "name": "CineDepo"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=archive.org&sz=%size%",
+        "fileHash": "sha256-bc4716e67eeb91e1c473eba0570fb8b87ce7332e274cf692fb223849d4720386",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/mtndlgc/cinedepo",
+        "fileSize": 23102,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "mtndlgc"
+        ],
+        "tvTypes": [
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "InternetArchive",
+        "description": "Internet Archive'daki kamu mal\u0131 (telif s\u00fcresi dolmu\u015f) filmler, \u00e7izgi filmler ve TV yay\u0131nlar\u0131.",
+        "url": "https://raw.githubusercontent.com/mtndlgc/cinedepo/builds/InternetArchive.cs3",
+        "name": "InternetArchive"
+    }
+]
