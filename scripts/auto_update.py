@@ -38,9 +38,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # ----------------------------------------------------------------- helpers
 
+class UpdateError(Exception):
+    """Invalid input or a failed git step; the message is user-facing (Turkish)."""
+
+
 def die(msg: str) -> None:
-    print(f"HATA: {msg}", file=sys.stderr)
-    sys.exit(1)
+    raise UpdateError(msg)
 
 
 def git(*args: str, capture: bool = False) -> str:
@@ -71,9 +74,13 @@ def normalize_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
 
 
+def list_plugins() -> list[str]:
+    """Plugin modules (top-level directories) that contain a SiteConfig.kt."""
+    return sorted({p.relative_to(ROOT).parts[0] for p in ROOT.glob("*/src/main/kotlin/**/SiteConfig.kt")})
+
+
 def find_plugin(name: str | None) -> Path:
-    candidates = sorted({p.parents[0] for p in ROOT.glob("*/src/main/kotlin/**/SiteConfig.kt")})
-    modules = {c.relative_to(ROOT).parts[0]: c for c in candidates}
+    modules = list_plugins()
     if name:
         if name not in modules:
             die(f"eklenti bulunamadı: {name}. Mevcut: {', '.join(modules) or '-'}")
@@ -110,6 +117,10 @@ class ConfigEditor:
             body = "".join(f"\n        {item}," for item in kotlin_items)
         self.text = pattern.sub(lambda m: m.group(1) + body + m.group(3), self.text, count=1)
 
+    def get_const_raw(self, name: str) -> str | None:
+        m = re.search(rf'const val {re.escape(name)} = "((?:[^"\\]|\\.)*)"', self.text)
+        return m.group(1) if m else None
+
     def get_const(self, name: str) -> str | None:
         m = re.search(rf'const val {re.escape(name)} = "((?:[^"\\]|\\.)*)"', self.text)
         return m.group(1).encode().decode("unicode_escape") if m else None
@@ -143,30 +154,30 @@ def set_icon_domain(gradle: ConfigEditor, url: str) -> None:
 
 # ----------------------------------------------------------------- live check
 
-def check_selectors(url: str, selectors: dict[str, str]) -> None:
+def check_selectors(url: str, selectors: dict[str, str], log=print) -> None:
     """Fetches the homepage/listing and reports how many elements each list selector matches."""
     try:
         from bs4 import BeautifulSoup  # type: ignore
     except ImportError:
-        print("  (--check atlandı: 'pip install beautifulsoup4' gerekli)")
+        log("  (--check atlandı: 'pip install beautifulsoup4' gerekli)")
         return
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (cinedepo auto_update)"})
     try:
         html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "replace")
     except Exception as e:  # noqa: BLE001
-        print(f"  (--check: {url} indirilemedi: {e})")
+        log(f"  (--check: {url} indirilemedi: {e})")
         return
     soup = BeautifulSoup(html, "html.parser")
     items = soup.select(selectors["LIST_ITEM"]) if selectors.get("LIST_ITEM") else []
-    print(f"  {url}: LIST_ITEM -> {len(items)} kart")
+    log(f"  {url}: LIST_ITEM -> {len(items)} kart")
     if items:
         first = items[0]
         for key in ("ITEM_TITLE", "ITEM_LINK", "ITEM_POSTER"):
             if selectors.get(key):
                 hit = first.select_one(selectors[key])
-                print(f"    ilk kartta {key}: {'bulundu' if hit else 'YOK'}")
+                log(f"    ilk kartta {key}: {'bulundu' if hit else 'YOK'}")
     elif selectors.get("LIST_ITEM"):
-        print("  UYARI: liste seçicisi bu sayfada hiçbir şey bulmadı "
+        log("  UYARI: liste seçicisi bu sayfada hiçbir şey bulmadı "
               "(sayfa JavaScript ile oluşuyor olabilir).")
 
 
@@ -202,34 +213,80 @@ def load_settings(args: argparse.Namespace) -> dict:
     return data
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Eklentiyi bir siteye uyarla, sürümü artır, gönder.")
-    ap.add_argument("--config", help="JSON ayar dosyası (bkz. site.example.json)")
-    ap.add_argument("--plugin", help="eklenti dizini (tek eklenti varsa gerekmez)")
-    ap.add_argument("--url", help="hedef sitenin ana adresi")
-    ap.add_argument("--name", help="uygulamada görünen sağlayıcı adı")
-    ap.add_argument("--lang", help="içerik dili (ISO 639-1, örn. tr)")
-    ap.add_argument("--search-path", dest="search_path", help="arama yolu, %%s = sorgu")
-    ap.add_argument("--home", action="append", help="ana sayfa satırı 'yol|Başlık', %%d = sayfa (tekrarlanabilir)")
-    ap.add_argument("--extra-host", action="append", dest="extra_host", help="izin verilen ek alan adı")
-    ap.add_argument("--selector", action="append", help="LIST_ITEM=\"div.film\" gibi (tekrarlanabilir)")
-    ap.add_argument("--no-bump", action="store_true", help="sürümü artırma")
-    ap.add_argument("--check", action="store_true", help="seçicileri canlı sayfada dene (beautifulsoup4)")
-    ap.add_argument("--dry-run", action="store_true", help="yalnızca farkı göster, dosya yazma")
-    ap.add_argument("--no-push", action="store_true", help="commit at ama gönderme")
-    ap.add_argument("--no-commit", action="store_true", help="dosyaları yaz, commit atma")
-    ap.add_argument("--allow-dirty", action="store_true", help="çalışma alanında başka değişiklik varken de devam et")
-    args = ap.parse_args()
+def read_state(plugin_name: str | None = None) -> dict:
+    """Current settings of a plugin, in the same shape run() accepts, plus metadata for editors."""
+    plugin = find_plugin(plugin_name)
+    cfg = ConfigEditor(next(plugin.glob("src/main/kotlin/**/SiteConfig.kt")))
+    gradle_text = (plugin / "build.gradle.kts").read_text(encoding="utf-8")
 
-    s = load_settings(args)
+    def unq(v: str) -> str:
+        return v.replace('\\$', "$").replace('\\"', '"').replace("\\\\", "\\")
+
+    home = [{"path": unq(a), "title": unq(b)} for a, b in re.findall(
+        r'^\s*"((?:[^"\\]|\\.)*)" to "((?:[^"\\]|\\.)*)",?\s*$',
+        re.search(r"HOME_SECTIONS:.*?\n    \)", cfg.text, re.S).group(0), re.M)]
+    hosts_block = re.search(r"ALLOWED_EXTRA_HOSTS: Set<String> = setOf\((.*?)\)", cfg.text, re.S).group(1)
+    hosts = [unq(h) for h in re.findall(r'"((?:[^"\\]|\\.)*)"', hosts_block)]
+
+    # Selectors with their group heading and the comment right above them.
+    selectors, group, note = [], "", []
+    in_sel = False
+    for line in cfg.text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("object Selectors"):
+            in_sel = True
+            continue
+        if not in_sel:
+            continue
+        if stripped == "}":
+            break
+        head = re.match(r"// -+ (.+?) -+$", stripped)
+        if head:
+            group, note = head.group(1), []
+        elif stripped.startswith("//"):
+            note.append(stripped[2:].strip())
+        else:
+            m = re.match(r'const val ([A-Z_]+) = "((?:[^"\\]|\\.)*)"', stripped)
+            if m:
+                selectors.append({"key": m.group(1), "value": unq(m.group(2)),
+                                  "group": group, "note": " ".join(note)})
+            note = []
+
+    version = re.search(r"^version\s*=\s*(\d+)", gradle_text, re.M)
+    return {
+        "plugin": plugin.name,
+        "plugins": list_plugins(),
+        "version": int(version.group(1)) if version else None,
+        "url": unq(cfg.get_const_raw("MAIN_URL") or ""),
+        "name": unq(cfg.get_const_raw("NAME") or ""),
+        "lang": unq(cfg.get_const_raw("LANG") or ""),
+        "search_path": unq(cfg.get_const_raw("SEARCH_PATH") or ""),
+        "home_sections": home,
+        "extra_hosts": hosts,
+        "selectors": selectors,
+    }
+
+
+def run(s: dict, *, dry_run: bool = False, no_bump: bool = False, no_commit: bool = False,
+        no_push: bool = False, allow_dirty: bool = False, check: bool = False, log=print) -> dict:
+    """Applies settings `s` (same keys as site.json) to the plugin. Raises UpdateError."""
+    s = dict(s)
+    s["selectors"] = {to_const_name(k): v for k, v in (s.get("selectors") or {}).items()}
+    result = {"diff": "", "changed": False, "written": False, "committed": False, "pushed": False}
     plugin = find_plugin(s.get("plugin"))
     config_path = next(plugin.glob("src/main/kotlin/**/SiteConfig.kt"))
     cfg = ConfigEditor(config_path)
     gradle = ConfigEditor(plugin / "build.gradle.kts")
 
-    if not args.dry_run and not args.no_commit and not args.allow_dirty:
-        if git("status", "--porcelain", capture=True).strip():
-            die("çalışma alanında commit'lenmemiş değişiklik var. Önce commit'leyin ya da --allow-dirty verin.")
+    own = {str(p.path.relative_to(ROOT)) for p in (cfg, gradle)}
+    if not dry_run and not no_commit and not allow_dirty:
+        # Uncommitted edits to this plugin's own two files (e.g. an earlier "save") are fine;
+        # anything else would end up mixed into the commit, so stop.
+        others = [line[3:] for line in git("status", "--porcelain", capture=True).splitlines()
+                  if line[3:].strip('"') not in own]
+        if others:
+            die("çalışma alanında commit'lenmemiş başka değişiklik var: " + ", ".join(others)
+                + ". Önce commit'leyin ya da --allow-dirty verin.")
 
     if "url" in s:
         s["url"] = normalize_url(s["url"])
@@ -261,43 +318,83 @@ def main() -> None:
     for key, value in s["selectors"].items():
         cfg.set_const(key, value)
 
+    pending = [] if dry_run or no_commit else [
+        f for f in sorted(own)
+        if subprocess.run(["git", "diff", "--quiet", "HEAD", "--", f], cwd=ROOT).returncode != 0]
     if not cfg.changed and not gradle.changed:
-        print("Değişecek bir şey yok (ayarlar zaten aynı).")
-        return
+        if not pending:
+            log("Değişecek bir şey yok (ayarlar zaten aynı).")
+            return result
+        log("Kaydedilmiş ama commit'lenmemiş değişiklikler gönderiliyor.")
+        no_bump = True  # already bumped when they were saved
 
-    if not args.no_bump:
+    if not no_bump:
         old, new = bump_version(gradle)
-        print(f"Sürüm: {old} -> {new}")
+        log(f"Sürüm: {old} -> {new}")
 
-    print(cfg.diff() + gradle.diff())
+    result["diff"] = cfg.diff() + gradle.diff() or git("diff", "HEAD", "--", *pending, capture=True)
+    result["changed"] = True
+    log(result["diff"])
 
-    if args.check:
+    if check:
         base = s.get("url") or cfg.get_const("MAIN_URL")
         all_sel = {k: cfg.get_const(k) for k in ("LIST_ITEM", "ITEM_TITLE", "ITEM_LINK", "ITEM_POSTER")}
         first = (s.get("home_sections") or [{"path": ""}])[0]["path"].replace("%d", "1")
-        check_selectors(base + first, all_sel)
+        check_selectors(base + first, all_sel, log)
 
-    if args.dry_run:
-        print("--dry-run: dosyalar yazılmadı.")
-        return
+    if dry_run:
+        log("--dry-run: dosyalar yazılmadı.")
+        return result
 
     cfg.save()
     gradle.save()
-    print("Dosyalar güncellendi.")
-    if args.no_commit:
-        return
+    result["written"] = True
+    log("Dosyalar güncellendi.")
+    if no_commit:
+        return result
 
-    changed = [str(p.path.relative_to(ROOT)) for p in (cfg, gradle) if p.changed]
+    changed = sorted({str(p.path.relative_to(ROOT)) for p in (cfg, gradle) if p.changed} | set(pending))
     git("add", "--", *changed)
     target = s.get("url") or "ayarlar"
     git("commit", "-m", f"Auto-update {plugin.name}: {target}")
-    print("Commit atıldı.")
-    if args.no_push:
-        return
+    result["committed"] = True
+    log("Commit atıldı.")
+    if no_push:
+        return result
     branch = git("rev-parse", "--abbrev-ref", "HEAD", capture=True).strip()
     git("push", "origin", branch)
-    print(f"'{branch}' dalına gönderildi. GitHub Actions derlemeyi başlattı; "
+    result["pushed"] = True
+    log(f"'{branch}' dalına gönderildi. GitHub Actions derlemeyi başlattı; "
           f"bittiğinde uygulamada Eklentiler ekranında güncelleme görünür.")
+
+    return result
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Eklentiyi bir siteye uyarla, sürümü artır, gönder.")
+    ap.add_argument("--config", help="JSON ayar dosyası (bkz. site.example.json)")
+    ap.add_argument("--plugin", help="eklenti dizini (tek eklenti varsa gerekmez)")
+    ap.add_argument("--url", help="hedef sitenin ana adresi")
+    ap.add_argument("--name", help="uygulamada görünen sağlayıcı adı")
+    ap.add_argument("--lang", help="içerik dili (ISO 639-1, örn. tr)")
+    ap.add_argument("--search-path", dest="search_path", help="arama yolu, %%s = sorgu")
+    ap.add_argument("--home", action="append", help="ana sayfa satırı 'yol|Başlık', %%d = sayfa (tekrarlanabilir)")
+    ap.add_argument("--extra-host", action="append", dest="extra_host", help="izin verilen ek alan adı")
+    ap.add_argument("--selector", action="append", help="LIST_ITEM=\"div.film\" gibi (tekrarlanabilir)")
+    ap.add_argument("--no-bump", action="store_true", help="sürümü artırma")
+    ap.add_argument("--check", action="store_true", help="seçicileri canlı sayfada dene (beautifulsoup4)")
+    ap.add_argument("--dry-run", action="store_true", help="yalnızca farkı göster, dosya yazma")
+    ap.add_argument("--no-push", action="store_true", help="commit at ama gönderme")
+    ap.add_argument("--no-commit", action="store_true", help="dosyaları yaz, commit atma")
+    ap.add_argument("--allow-dirty", action="store_true", help="çalışma alanında başka değişiklik varken de devam et")
+    args = ap.parse_args()
+
+    try:
+        run(load_settings(args), dry_run=args.dry_run, no_bump=args.no_bump, no_commit=args.no_commit,
+            no_push=args.no_push, allow_dirty=args.allow_dirty, check=args.check)
+    except UpdateError as e:
+        print(f"HATA: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

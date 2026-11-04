@@ -19,6 +19,7 @@ cinedepo/
 ├── plugins.example.json         # makePluginsJson çıktısının biçimi (örnek)
 ├── site.example.json            # auto_update.py için örnek site ayarı
 ├── scripts/auto_update.py       # siteye uyarla + sürüm artır + gönder (tek komut)
+├── scripts/site_editor.py       # aynı işin tarayıcıda açılan masaüstü arayüzü
 ├── .github/workflows/build.yml  # .cs3 + plugins.json üretir, `builds` dalına yayınlar
 └── CineDepo/                    # eklenti modülü; dizin adı = eklenti adı
     ├── build.gradle.kts         # sürüm + eklenti bildirimi (cloudstream { ... })
@@ -68,6 +69,42 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
 
 Yeni eklenti eklemek için `CineDepo` dizinini kopyalayıp adını ve paketini
 değiştirmeniz yeterli; `settings.gradle.kts` onu kendiliğinden ekler.
+
+## Masaüstü arayüzü (`scripts/site_editor.py`)
+
+Site adresini ve seçicileri komut satırı yerine bir pencereden düzenlemek için:
+
+```bash
+git clone https://github.com/mtndlgc/cinedepo && cd cinedepo
+python3 scripts/site_editor.py
+```
+
+Tarayıcıda `http://127.0.0.1:8765` açılır (açılmazsa adresi kendin aç; kapatmak için terminalde
+`Ctrl+C`). Gereken tek şey Python 3; Windows, macOS ve Linux'ta aynı çalışır, ek paket gerekmez.
+
+Sayfa `SiteConfig.kt`'deki mevcut değerleri gösterir: site adresi, uygulamadaki ad, dil, arama
+yolu, ana sayfa satırları, ek alan adları ve 25 CSS seçicisinin hepsi, Türkçe açıklamalarıyla.
+
+| Düğme | Ne yapar |
+|---|---|
+| **Önizle** | Değişiklikleri renkli fark olarak gösterir, dosyaya yazmaz |
+| **Kaydet** | Dosyaları yazar ve sürümü artırır, commit atmaz |
+| **Kaydet ve GitHub'a gönder** | Yazar, commit'ler, gönderir; GitHub Actions derlemeyi başlatır (~2 dk) |
+
+- "Sürümü artır" işaretliyse sürüm 1 artar. Önce Kaydet sonra Gönder'e basınca sürüm yalnızca bir
+  kez artar.
+- "Seçicileri canlı sayfada dene" işaretliyse önizleme, listedeki seçicileri sitenin gerçek
+  sayfasında dener (`pip install beautifulsoup4` gerekir).
+- Hatalı girişte (boş seçici, geçersiz adres ya da dil kodu, `%s` olmayan arama yolu) hiçbir şey
+  yazılmaz; hata altta gösterilir.
+- Gönderim, bilgisayarındaki git kimliğini kullanır. `git push` terminalde çalışıyorsa buradan da
+  çalışır.
+- Eklentinin kendi iki dosyası dışında commit'lenmemiş bir değişiklik varsa gönderim durur; bu,
+  ilgisiz dosyaların yanlışlıkla commit'lenmesini engeller.
+
+Güvenlik: sunucu yalnızca `127.0.0.1` adresini dinler, ağdaki başka cihazlar erişemez. Her
+çalıştırmada rastgele bir anahtar üretilir ve her istek bu anahtarı taşımak zorundadır; böylece
+tarayıcıda açık olan başka bir site arayüze istek gönderemez.
 
 ## Otomatik güncelleme (`scripts/auto_update.py`)
 
