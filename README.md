@@ -21,6 +21,7 @@ cinedepo/
 ├── scripts/auto_update.py       # siteye uyarla + sürüm artır + gönder (tek komut)
 ├── scripts/site_editor.py       # aynı işin tarayıcıda açılan masaüstü arayüzü
 ├── .github/workflows/build.yml  # .cs3 + plugins.json üretir, `builds` dalına yayınlar
+├── InternetArchive/             # archive.org'daki kamu malı filmler (JSON API, çalışan örnek)
 └── CineDepo/                    # eklenti modülü; dizin adı = eklenti adı
     ├── build.gradle.kts         # sürüm + eklenti bildirimi (cloudstream { ... })
     └── src/
@@ -69,6 +70,24 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
 
 Yeni eklenti eklemek için `CineDepo` dizinini kopyalayıp adını ve paketini
 değiştirmeniz yeterli; `settings.gradle.kts` onu kendiliğinden ekler.
+
+## Internet Archive eklentisi
+
+`InternetArchive/`, archive.org'daki kamu malı (telif süresi dolmuş) filmleri gösteren, gerçek
+içerikle çalışan bir eklentidir. HTML seçicileri yerine Internet Archive'ın açık JSON API'sini
+kullanır, bu yüzden `SiteConfig` ve site düzenleyiciyle ilgisi yoktur.
+
+- Ana sayfa satırları: Uzun Metraj Filmler (`feature_films`), Kara Filmler (`Film_Noir`),
+  Bilim Kurgu ve Korku (`SciFi_Horror`), Komedi (`comedy_films`), Sessiz Filmler (`silent_films`),
+  Klasik Çizgi Filmler (`classic_cartoons`), Klasik TV (`classic_tv`). Liste
+  `ArchiveApi.COLLECTIONS` içindedir.
+- Arama bu koleksiyonlarda başlık ve konuya göre yapılır; sonuçlar indirme sayısına göre sıralanır.
+- Video: Android oynatıcısının sorunsuz oynattığı biçimler (h.264, MPEG4, 512Kb MPEG4) en iyiden
+  başlayarak sunulur; MPEG2, Ogg ve Matroska atlanır. `.srt` / `.vtt` altyazılar eklenir.
+
+Bu koleksiyonlar Internet Archive'ın kamu malı film koleksiyonlarıdır, ama öğeleri kullanıcılar
+yükler ve Archive her öğenin hak durumunu tek tek doğrulamaz. Bir öğenin durumundan şüphelenirsen
+archive.org'daki sayfasına bak.
 
 ## Masaüstü arayüzü (`scripts/site_editor.py`)
 

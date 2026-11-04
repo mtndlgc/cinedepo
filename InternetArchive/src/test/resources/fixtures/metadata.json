@@ -1,0 +1,15 @@
+{"created":1700000000,"dir":"/1/items/night_of_the_living_dead","server":"ia800.us.archive.org",
+ "files":[
+  {"name":"night_of_the_living_dead.mpeg","source":"original","format":"MPEG2","size":"900000000"},
+  {"name":"night_of_the_living_dead_512kb.mp4","source":"derivative","format":"512Kb MPEG4","height":"240","width":"320"},
+  {"name":"night_of_the_living_dead.mp4","source":"derivative","format":"h.264","height":"480","width":"640"},
+  {"name":"Night Of The Living Dead HD.mp4","source":"original","format":"MPEG4","height":"720"},
+  {"name":"night_of_the_living_dead.ogv","source":"derivative","format":"Ogg Video"},
+  {"name":"night_of_the_living_dead.en.srt","source":"original","format":"SubRip"},
+  {"name":"subs/night.tr.vtt","source":"original","format":"Web Video Text Tracks"},
+  {"name":"__ia_thumb.jpg","source":"original","format":"Item Tile"}
+ ],
+ "metadata":{"identifier":"night_of_the_living_dead","mediatype":"movies","collection":["feature_films","SciFi_Horror"],
+  "title":"Night of the Living Dead","date":"1968-10-01",
+  "description":["A group of people hide from <b>flesh-eating</b> ghouls.<br/>Public domain.","Directed by George A. Romero &amp; others."],
+  "subject":["horror; zombies","Romero","a very very very very very very long subject that is dropped"]}}

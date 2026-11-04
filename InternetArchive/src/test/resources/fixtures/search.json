@@ -1,0 +1,7 @@
+{"responseHeader":{"status":0,"QTime":12,"params":{"query":"collection:(feature_films) AND mediatype:(movies)","rows":"50"}},
+ "response":{"numFound":120,"start":0,"docs":[
+  {"identifier":"night_of_the_living_dead","title":"Night of the Living Dead","year":"1968"},
+  {"identifier":"His_Girl_Friday_1940","title":["His Girl Friday"],"year":1940},
+  {"identifier":"no_title_item"},
+  {"identifier":"bad id with spaces","title":"Dropped"}
+ ]}}
