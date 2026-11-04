@@ -1,0 +1,23 @@
+{
+  "url": "https://example-site.com",
+  "name": "CineDepo",
+  "lang": "tr",
+  "search_path": "/search?q=%s",
+  "home_sections": [
+    { "path": "/movies/page/%d", "title": "Son Filmler" },
+    { "path": "/series/page/%d", "title": "Son Diziler" }
+  ],
+  "extra_hosts": [],
+  "selectors": {
+    "LIST_ITEM": "div.items article.item",
+    "ITEM_TITLE": "h3.title",
+    "ITEM_LINK": "a[href]",
+    "ITEM_POSTER": "img",
+    "ITEM_IS_SERIES": ".badge-series",
+    "NEXT_PAGE": "a.next, link[rel=next]",
+    "DETAIL_TITLE": "h1.entry-title",
+    "DETAIL_POSTER": "div.poster img",
+    "DETAIL_PLOT": "div.description",
+    "PLAYER_IFRAME": "div.player iframe[src], div.player iframe[data-src]"
+  }
+}

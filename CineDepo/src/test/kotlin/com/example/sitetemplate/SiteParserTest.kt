@@ -14,7 +14,38 @@ import org.junit.Test
  * src/test/resources/fixtures and adapt these assertions when you change selectors.
  */
 class SiteParserTest {
-    private val parser = SiteParser("https://example-site.com", setOf("cdn.example-site.com"))
+    // Selectors of the fixture pages in src/test/resources/fixtures. Independent of
+    // SiteConfig on purpose: retargeting the plugin must not break these tests.
+    private val fixtureSelectors = SiteSelectors(
+        listItem = "div.items article.item",
+        itemTitle = "h3.title",
+        itemLink = "a[href]",
+        itemPoster = "img",
+        itemIsSeries = ".badge-series",
+        nextPage = "a.next, link[rel=next]",
+        detailTitle = "h1.entry-title",
+        detailPoster = "div.poster img",
+        detailPlot = "div.description",
+        detailYear = "span.year",
+        detailTags = "div.genres a",
+        detailActors = "div.cast a",
+        detailTrailer = "a.trailer[href], iframe.trailer[src]",
+        detailRecommended = "div.related article.item",
+        seasonBlock = "div.seasons div.season",
+        seasonNumberAttr = "data-season",
+        episodeItem = "ul.episodes li",
+        episodeLink = "a[href]",
+        episodeName = ".episode-title",
+        episodeNumberAttr = "data-episode",
+        episodeThumb = "img",
+        playerIframe = "div.player iframe[src], div.player iframe[data-src]",
+        directSource = "video source[src], video[src]",
+        subtitleTrack = "video track[kind=subtitles][src], video track[kind=captions][src]",
+        playerScript = "script",
+        playerJsonRegex = Regex("""playerConfig\s*=\s*(\{.*?\})\s*;""", RegexOption.DOT_MATCHES_ALL),
+    )
+
+    private val parser = SiteParser("https://example-site.com", setOf("cdn.example-site.com"), fixtureSelectors)
 
     private fun fixture(name: String): Document {
         val html = javaClass.getResource("/fixtures/$name")!!.readText()
@@ -90,5 +121,11 @@ class SiteParserTest {
     @Test
     fun missingTitleMeansNoDetail() {
         assertNull(parser.parseDetail(Jsoup.parse("<html><body><p>nothing</p></body></html>")))
+    }
+
+    @Test
+    fun configSelectorsMapCompletely() {
+        // Fails to compile or throws if SiteConfig and SiteSelectors drift apart.
+        assertNotNull(SiteSelectors.fromConfig().listItem)
     }
 }

@@ -17,6 +17,8 @@ cinedepo/
 ├── gradlew, gradle/wrapper/     # Gradle 8.11.1 (sürümler aşağıda)
 ├── repo.json                    # Uygulamaya eklenen depo bildirimi
 ├── plugins.example.json         # makePluginsJson çıktısının biçimi (örnek)
+├── site.example.json            # auto_update.py için örnek site ayarı
+├── scripts/auto_update.py       # siteye uyarla + sürüm artır + gönder (tek komut)
 ├── .github/workflows/build.yml  # .cs3 + plugins.json üretir, `builds` dalına yayınlar
 └── CineDepo/                    # eklenti modülü; dizin adı = eklenti adı
     ├── build.gradle.kts         # sürüm + eklenti bildirimi (cloudstream { ... })
@@ -30,7 +32,7 @@ cinedepo/
         │       ├── ExampleEmbedExtractor.kt # Özel gömülü oynatıcı için ExtractorApi şablonu
         │       └── ExampleSitePlugin.kt     # @CloudstreamPlugin giriş noktası
         └── test/
-            ├── kotlin/.../SiteParserTest.kt # JVM testi, ağ yok
+            ├── kotlin/.../SiteParserTest.kt # JVM testi, ağ yok; kendi sabit seçicilerini kullanır
             └── resources/fixtures/*.html    # Örnek sayfalar
 ```
 
@@ -52,7 +54,8 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
 
 ## Yeni bir siteye uyarlama
 
-1. `SiteConfig.kt` içindeki `TODO` alanlarını doldurun. Seçicileri tarayıcıda
+1. `SiteConfig.kt` içindeki `TODO` alanlarını doldurun (elle ya da `scripts/auto_update.py` ile,
+   aşağıya bakın). Seçicileri tarayıcıda
    Geliştirici Araçları > Öğeler ile bulun (`document.querySelectorAll("...")` ile konsolda deneyin).
 2. Hedef sitenin bir liste, film ve dizi sayfasını `src/test/resources/fixtures/` altına
    kaydedin, `SiteParserTest` beklentilerini güncelleyin.
@@ -65,6 +68,56 @@ Güvenlik kuralları (`SiteParser.safeUrl`):
 
 Yeni eklenti eklemek için `CineDepo` dizinini kopyalayıp adını ve paketini
 değiştirmeniz yeterli; `settings.gradle.kts` onu kendiliğinden ekler.
+
+## Otomatik güncelleme (`scripts/auto_update.py`)
+
+Siteye uyarlama, sürüm artırma ve gönderme tek komuttur. Yalnızca Python 3 standart
+kitaplığı gerekir.
+
+```bash
+cp site.example.json site.json          # düzenleyin: url, name, lang, home_sections, selectors
+python3 scripts/auto_update.py --config site.json --dry-run   # yalnız farkı göster
+python3 scripts/auto_update.py --config site.json             # yaz, commit'le, gönder
+```
+
+Ya da yalnızca bazı alanları komut satırından değiştirin:
+
+```bash
+python3 scripts/auto_update.py --selector LIST_ITEM="div.film-card" --selector ITEM_TITLE="h2"
+python3 scripts/auto_update.py --url https://site.example --home "/filmler/%d|Filmler"
+```
+
+Script şunları yapar:
+1. `SiteConfig.kt` içindeki `MAIN_URL`, `NAME`, `LANG`, `SEARCH_PATH`, `HOME_SECTIONS`,
+   `ALLOWED_EXTRA_HOSTS` ve `Selectors` altındaki her sabiti günceller. Seçici anahtarı
+   `LIST_ITEM` ya da `listItem` yazılabilir; bilinmeyen anahtarda mevcut alanları listeleyip durur.
+   Değerler Kotlin dizgesi olarak kaçırılır (`"`, `\`, `$`).
+2. `build.gradle.kts` içinde `version` değerini 1 artırır, `iconUrl` alan adını ve `language`
+   değerini eşitler. Hiçbir şey değişmiyorsa sürümü artırmaz.
+3. Yalnızca bu iki dosyayı commit'ler ve bulunduğunuz dala gönderir. Çalışma alanında başka
+   commit'lenmemiş değişiklik varsa durur (`--allow-dirty` ile geçilebilir); git hatasında durur.
+
+Diğer seçenekler: `--check` (seçicileri canlı sayfada dener, `pip install beautifulsoup4`
+gerekir; JavaScript ile oluşan sayfalarda sonuç vermez), `--no-bump`, `--no-commit`,
+`--no-push`, `--plugin <dizin>` (birden çok eklenti varsa).
+
+`site.json` kendi sitenize ait olduğu için depoya eklemeyin; `.gitignore` onu dışarıda tutar.
+
+Birim testleri `SiteConfig`'e değil, testin içindeki sabit seçicilere bağlıdır. Böylece
+seçicileri gerçek siteye göre değiştirmek CI'yı kırmaz. Gerçek sitenin sayfalarını da test
+etmek isterseniz onları `fixtures/` altına kaydedip yeni bir test yazın.
+
+### Uygulamanın güncellemeyi alması
+
+Gönderimden sonra GitHub Actions derlemesi 1,5-2 dakika sürer ve yeni `.cs3` ile
+`plugins.json`'ı `builds` dalına koyar. Cloudstream, `plugins.json` içindeki `version`
+değeri kuruluyla karşılaştırarak güncellemeyi fark eder. Uygulama depoları açılışta denetler.
+Eklenti ayarlarında otomatik güncelleme açıksa güncellemeyi kendisi kurar; değilse Eklentiler
+ekranında eklentinin yanında güncelleme seçeneği görünür. (Ayarın adı ve varsayılanı uygulama
+sürümüne göre değişebilir.)
+
+Beklemeden denemek için: `./gradlew make` ile yerelde `.cs3` üretin, ya da cihaz USB'ye bağlıysa
+`./gradlew CineDepo:deployWithAdb` ile doğrudan yükleyin.
 
 ## Sürümler
 

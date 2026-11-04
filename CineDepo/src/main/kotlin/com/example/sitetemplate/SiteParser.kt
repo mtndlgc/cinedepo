@@ -1,6 +1,5 @@
 package com.example.sitetemplate
 
-import com.example.sitetemplate.SiteConfig.Selectors
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -60,13 +59,79 @@ data class ParsedSources(
     /** Direct file / HLS URLs found in <video>/<source>. */
     val directUrls: List<String>,
     val subtitles: List<ParsedSubtitle>,
-    /** Raw JSON from the inline player script, if [SiteConfig.PLAYER_JSON_REGEX] matched. */
+    /** Raw JSON from the inline player script, if [SiteSelectors.playerJsonRegex] matched. */
     val playerJson: String?,
 )
+
+/**
+ * The CSS selectors the parser uses. Production code takes them from [SiteConfig]
+ * ([fromConfig]); tests pass their own set that matches the fixture pages, so
+ * changing SiteConfig for a real site does not break the unit tests.
+ */
+data class SiteSelectors(
+    val listItem: String,
+    val itemTitle: String,
+    val itemLink: String,
+    val itemPoster: String,
+    val itemIsSeries: String,
+    val nextPage: String,
+    val detailTitle: String,
+    val detailPoster: String,
+    val detailPlot: String,
+    val detailYear: String,
+    val detailTags: String,
+    val detailActors: String,
+    val detailTrailer: String,
+    val detailRecommended: String,
+    val seasonBlock: String,
+    val seasonNumberAttr: String,
+    val episodeItem: String,
+    val episodeLink: String,
+    val episodeName: String,
+    val episodeNumberAttr: String,
+    val episodeThumb: String,
+    val playerIframe: String,
+    val directSource: String,
+    val subtitleTrack: String,
+    val playerScript: String,
+    val playerJsonRegex: Regex?,
+) {
+    companion object {
+        fun fromConfig() = SiteSelectors(
+            listItem = SiteConfig.Selectors.LIST_ITEM,
+            itemTitle = SiteConfig.Selectors.ITEM_TITLE,
+            itemLink = SiteConfig.Selectors.ITEM_LINK,
+            itemPoster = SiteConfig.Selectors.ITEM_POSTER,
+            itemIsSeries = SiteConfig.Selectors.ITEM_IS_SERIES,
+            nextPage = SiteConfig.Selectors.NEXT_PAGE,
+            detailTitle = SiteConfig.Selectors.DETAIL_TITLE,
+            detailPoster = SiteConfig.Selectors.DETAIL_POSTER,
+            detailPlot = SiteConfig.Selectors.DETAIL_PLOT,
+            detailYear = SiteConfig.Selectors.DETAIL_YEAR,
+            detailTags = SiteConfig.Selectors.DETAIL_TAGS,
+            detailActors = SiteConfig.Selectors.DETAIL_ACTORS,
+            detailTrailer = SiteConfig.Selectors.DETAIL_TRAILER,
+            detailRecommended = SiteConfig.Selectors.DETAIL_RECOMMENDED,
+            seasonBlock = SiteConfig.Selectors.SEASON_BLOCK,
+            seasonNumberAttr = SiteConfig.Selectors.SEASON_NUMBER_ATTR,
+            episodeItem = SiteConfig.Selectors.EPISODE_ITEM,
+            episodeLink = SiteConfig.Selectors.EPISODE_LINK,
+            episodeName = SiteConfig.Selectors.EPISODE_NAME,
+            episodeNumberAttr = SiteConfig.Selectors.EPISODE_NUMBER_ATTR,
+            episodeThumb = SiteConfig.Selectors.EPISODE_THUMB,
+            playerIframe = SiteConfig.Selectors.PLAYER_IFRAME,
+            directSource = SiteConfig.Selectors.DIRECT_SOURCE,
+            subtitleTrack = SiteConfig.Selectors.SUBTITLE_TRACK,
+            playerScript = SiteConfig.Selectors.PLAYER_SCRIPT,
+            playerJsonRegex = SiteConfig.PLAYER_JSON_REGEX,
+        )
+    }
+}
 
 class SiteParser(
     mainUrl: String = SiteConfig.MAIN_URL,
     extraHosts: Set<String> = SiteConfig.ALLOWED_EXTRA_HOSTS,
+    private val sel: SiteSelectors = SiteSelectors.fromConfig(),
 ) {
     private val baseUri: URI = URI(mainUrl)
     private val allowedHosts: Set<String> =
@@ -75,39 +140,39 @@ class SiteParser(
     // ---------------------------------------------------------------- listing
 
     fun parseListing(doc: Document): ParsedListing = ParsedListing(
-        items = doc.select(Selectors.LIST_ITEM).mapNotNull { parseItem(it) }.distinctBy { it.url },
-        hasNext = doc.selectFirst(Selectors.NEXT_PAGE) != null,
+        items = doc.select(sel.listItem).mapNotNull { parseItem(it) }.distinctBy { it.url },
+        hasNext = doc.selectFirst(sel.nextPage) != null,
     )
 
     fun parseItem(card: Element): ParsedItem? {
-        val link = card.selectFirst(Selectors.ITEM_LINK) ?: return null
+        val link = card.selectFirst(sel.itemLink) ?: return null
         val url = safeUrl(link.attr("href"), sameSiteOnly = true) ?: return null
-        val title = card.textOf(Selectors.ITEM_TITLE)
+        val title = card.textOf(sel.itemTitle)
             ?: link.attr("title").cleanText()
-            ?: card.selectFirst(Selectors.ITEM_POSTER)?.attr("alt").cleanText()
+            ?: card.selectFirst(sel.itemPoster)?.attr("alt").cleanText()
             ?: return null
         return ParsedItem(
             title = title,
             url = url,
-            posterUrl = card.selectFirst(Selectors.ITEM_POSTER)?.imageUrl(),
-            isSeries = card.selectFirst(Selectors.ITEM_IS_SERIES) != null,
+            posterUrl = card.selectFirst(sel.itemPoster)?.imageUrl(),
+            isSeries = card.selectFirst(sel.itemIsSeries) != null,
         )
     }
 
     // ---------------------------------------------------------------- detail
 
     fun parseDetail(doc: Document): ParsedDetail? {
-        val title = doc.textOf(Selectors.DETAIL_TITLE)
+        val title = doc.textOf(sel.detailTitle)
             ?: doc.selectFirst("meta[property=og:title]")?.attr("content").cleanText()
             ?: return null
 
-        val poster = doc.selectFirst(Selectors.DETAIL_POSTER)?.imageUrl()
+        val poster = doc.selectFirst(sel.detailPoster)?.imageUrl()
             ?: safeUrl(doc.selectFirst("meta[property=og:image]")?.attr("content"))
 
-        val plot = doc.textOf(Selectors.DETAIL_PLOT)
+        val plot = doc.textOf(sel.detailPlot)
             ?: doc.selectFirst("meta[name=description]")?.attr("content").cleanText()
 
-        val trailer = doc.selectFirst(Selectors.DETAIL_TRAILER)?.let { el: Element ->
+        val trailer = doc.selectFirst(sel.detailTrailer)?.let { el: Element ->
             safeUrl(el.attr("href").ifBlank { el.attr("src") }, sameSiteOnly = false)
         }
 
@@ -115,27 +180,27 @@ class SiteParser(
             title = title,
             posterUrl = poster,
             plot = plot,
-            year = doc.textOf(Selectors.DETAIL_YEAR)?.let { YEAR.find(it)?.value?.toIntOrNull() },
-            tags = doc.select(Selectors.DETAIL_TAGS).mapNotNull { it.text().cleanText() }.distinct(),
-            actors = doc.select(Selectors.DETAIL_ACTORS).mapNotNull { it.text().cleanText() }.distinct(),
+            year = doc.textOf(sel.detailYear)?.let { YEAR.find(it)?.value?.toIntOrNull() },
+            tags = doc.select(sel.detailTags).mapNotNull { it.text().cleanText() }.distinct(),
+            actors = doc.select(sel.detailActors).mapNotNull { it.text().cleanText() }.distinct(),
             trailerUrl = trailer,
             episodes = parseEpisodes(doc),
-            recommendations = doc.select(Selectors.DETAIL_RECOMMENDED).mapNotNull { parseItem(it) },
+            recommendations = doc.select(sel.detailRecommended).mapNotNull { parseItem(it) },
         )
     }
 
     fun parseEpisodes(doc: Document): List<ParsedEpisode> =
-        doc.select(Selectors.SEASON_BLOCK).flatMapIndexed { seasonIndex, block ->
-            val season = block.attr(Selectors.SEASON_NUMBER_ATTR).toIntOrNull() ?: (seasonIndex + 1)
-            block.select(Selectors.EPISODE_ITEM).mapIndexedNotNull { epIndex, li ->
-                val url = safeUrl(li.selectFirst(Selectors.EPISODE_LINK)?.attr("href"), sameSiteOnly = true)
+        doc.select(sel.seasonBlock).flatMapIndexed { seasonIndex, block ->
+            val season = block.attr(sel.seasonNumberAttr).toIntOrNull() ?: (seasonIndex + 1)
+            block.select(sel.episodeItem).mapIndexedNotNull { epIndex, li ->
+                val url = safeUrl(li.selectFirst(sel.episodeLink)?.attr("href"), sameSiteOnly = true)
                     ?: return@mapIndexedNotNull null
                 ParsedEpisode(
                     url = url,
-                    name = li.textOf(Selectors.EPISODE_NAME),
+                    name = li.textOf(sel.episodeName),
                     season = season,
-                    episode = li.attr(Selectors.EPISODE_NUMBER_ATTR).toIntOrNull() ?: (epIndex + 1),
-                    posterUrl = li.selectFirst(Selectors.EPISODE_THUMB)?.imageUrl(),
+                    episode = li.attr(sel.episodeNumberAttr).toIntOrNull() ?: (epIndex + 1),
+                    posterUrl = li.selectFirst(sel.episodeThumb)?.imageUrl(),
                 )
             }
         }.distinctBy { it.url }
@@ -143,19 +208,19 @@ class SiteParser(
     // ---------------------------------------------------------------- player
 
     fun parseSources(doc: Document): ParsedSources {
-        val embeds = doc.select(Selectors.PLAYER_IFRAME).mapNotNull {
+        val embeds = doc.select(sel.playerIframe).mapNotNull {
             // Third-party players are the point of extractors, so any https host is accepted here.
             safeUrl(it.attr("src").ifBlank { it.attr("data-src") }, sameSiteOnly = false)
         }
-        val direct = doc.select(Selectors.DIRECT_SOURCE).mapNotNull {
+        val direct = doc.select(sel.directSource).mapNotNull {
             safeUrl(it.attr("src"), sameSiteOnly = false)
         }
-        val subs = doc.select(Selectors.SUBTITLE_TRACK).mapNotNull { track ->
+        val subs = doc.select(sel.subtitleTrack).mapNotNull { track ->
             val url = safeUrl(track.attr("src"), sameSiteOnly = false) ?: return@mapNotNull null
             ParsedSubtitle(url, track.attr("label").cleanText() ?: track.attr("srclang").cleanText() ?: "Unknown")
         }
-        val json = SiteConfig.PLAYER_JSON_REGEX?.let { regex ->
-            doc.select(Selectors.PLAYER_SCRIPT).asSequence()
+        val json = sel.playerJsonRegex?.let { regex ->
+            doc.select(sel.playerScript).asSequence()
                 .map { it.data() }
                 .mapNotNull { regex.find(it)?.groupValues?.getOrNull(1) }
                 .firstOrNull()
